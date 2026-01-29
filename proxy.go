@@ -102,7 +102,7 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 		backendURL, ok := userBackends[name]
 		mu.Unlock()
 
-		CheckUserRegisteredUrlHealth(name)
+		checkUserRegisteredUrlHealth(name)
 		if !ok {
 			http.Error(w, "Bad backend URL", http.StatusInternalServerError)
 			return
@@ -138,7 +138,7 @@ func healthCheckRoutine() {
 	}
 }
 
-func CheckUserRegisteredUrlHealth(name string) {
+func checkUserRegisteredUrlHealth(name string) {
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
 
