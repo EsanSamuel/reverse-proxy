@@ -22,6 +22,32 @@ var rrIndex uint32
 var healthyBackends []string
 var mu sync.RWMutex
 
+type responseWriter struct {
+	http.ResponseWriter
+	statusCode   int
+	bytesWritten int64
+}
+
+func NewResponseWriter(w http.ResponseWriter) *responseWriter {
+	return &responseWriter{
+		ResponseWriter: w,
+		statusCode:     http.StatusOK,
+	}
+}
+
+func (rw *responseWriter) WriteStatusCode(code int) {
+	rw.statusCode = code
+}
+
+func (rw *responseWriter) Write(b []byte) (int, error) {
+	n, err := rw.ResponseWriter.Write(b)
+	if err != nil {
+		fmt.Println("Error writing byte", err)
+		return 0, err
+	}
+	return n, nil
+}
+
 func main() {
 	mu.Lock()
 	healthyBackends = append([]string(nil), backends...)
@@ -96,7 +122,21 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 
 		r.Host = backendURL.Host
 
-		proxy.ServeHTTP(w, r)
+		start := time.Now()
+
+		rw := NewResponseWriter(w)
+
+		proxy.ServeHTTP(rw, r)
+		duration := time.Since(start)
+
+		log.Printf(
+			"method=%s path=%s status=%d bytes=%d duration_ms=%dms",
+			r.Method,
+			r.URL.Path,
+			rw.statusCode,
+			rw.bytesWritten,
+			duration.Milliseconds(),
+		)
 	} else {
 		mu.Lock()
 		backendURL, ok := userBackends[name]
@@ -114,12 +154,26 @@ func proxyHandler(w http.ResponseWriter, r *http.Request) {
 
 		r.Host = backendURL.Host
 
-		proxy.ServeHTTP(w, r)
+		start := time.Now()
+
+		rw := NewResponseWriter(w)
+
+		proxy.ServeHTTP(rw, r)
+		duration := time.Since(start)
+
+		log.Printf(
+			"method=%s path=%s status=%d bytes=%d duration_ms=%dms",
+			r.Method,
+			r.URL.Path,
+			rw.statusCode,
+			rw.bytesWritten,
+			duration.Milliseconds(),
+		)
 	}
 }
 
 func healthCheckRoutine() {
-	ticker := time.NewTicker(5 * time.Second)
+	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
 
 	for range ticker.C {
@@ -139,7 +193,7 @@ func healthCheckRoutine() {
 }
 
 func checkUserRegisteredUrlHealth(name string) {
-	ticker := time.NewTicker(5 * time.Second)
+	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
 
 	for range ticker.C {
